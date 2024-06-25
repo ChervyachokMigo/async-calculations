@@ -1,5 +1,6 @@
 
 const { existsSync }  = require( 'node:fs');
+const path = require('node:path');
 const { isMainThread }  = require( 'node:worker_threads');
 
 module.exports = async ({ max, data, procedure_path }) => {
@@ -27,7 +28,7 @@ module.exports = async ({ max, data, procedure_path }) => {
 
 		for (actions.current = 0; actions.current < actions.max; actions.current++ ) {
 
-			const worker = new Worker('./child.js', { workerData: procedure_path });
+			const worker = new Worker( path.join( __dirname, 'child.js'), { workerData: procedure_path });
 
 			console.log('create', actions.current, 'worker');
 
