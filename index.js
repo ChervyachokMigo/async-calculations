@@ -53,5 +53,7 @@ module.exports = async ({ max, data, procedure_path, procedure_data }) => {
 		
 		console.timeEnd('done');
 
+		return actions.data_out;
+
 	}
 }
