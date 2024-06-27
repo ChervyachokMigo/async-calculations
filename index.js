@@ -3,7 +3,7 @@ const { existsSync }  = require( 'node:fs');
 const path = require('node:path');
 const { isMainThread }  = require( 'node:worker_threads');
 
-module.exports = async ({ max, data, procedure_path, procedure_data }) => {
+module.exports = async ({ max, data, procedure_path, procedure_data, print_frequerency = 1000 }) => {
 	console.time('done');
 
 	if (isMainThread) {
@@ -26,6 +26,9 @@ module.exports = async ({ max, data, procedure_path, procedure_data }) => {
 		console.log('set', max, 'threads');
 		console.log ('data_in', actions.data_in.length);
 
+		const data_length = actions.data_in.length;
+		const data_length_1000 = print_frequerency === 0 ? 0 : actions.data_in.length / print_frequerency;
+
 		for (actions.current = 0; actions.current < actions.max; actions.current++ ) {
 
 			const worker = new Worker( path.join( __dirname, 'child.js'), { workerData: { procedure_path, procedure_data } });
@@ -38,6 +41,9 @@ module.exports = async ({ max, data, procedure_path, procedure_data }) => {
 				actions.data_out.push(data_out);
 				if (actions.data_in.length > 0) {
 					worker.postMessage(actions.data_in.pop());
+					if (print_frequerency && actions.data_in.length % print_frequerency == 0) {
+						console.log( ( (data_length-actions.data_in.length)/data_length_1000/10).toFixed(1), '%')
+					}
 				} else {
 					worker.terminate();
 				}
