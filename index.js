@@ -3,7 +3,7 @@ const { existsSync }  = require( 'node:fs');
 const path = require('node:path');
 const { isMainThread }  = require( 'node:worker_threads');
 
-module.exports = async ({ max, data, procedure_path, procedure_data, print_frequerency = 1000 }) => {
+module.exports = async ({ max, data, procedure_path, procedure_data, print_frequerency = 1000, proxy_list = [] }) => {
 	console.time('done');
 
 	if (isMainThread) {
@@ -26,8 +26,34 @@ module.exports = async ({ max, data, procedure_path, procedure_data, print_frequ
 		console.log('set', max, 'threads');
 		console.log ('data_in', actions.data_in.length);
 
+		const proxy_locked_states = proxy_list.map( (x, i) => ({...x, id: i, locked: false }));
+
+		console.log( 'checking proxy:', 
+			proxy_locked_states.length >= actions.max ? 
+				'success' : 
+				'less than actions'
+		);
+
 		const data_length = actions.data_in.length;
-		const data_length_1000 = print_frequerency === 0 ? 0 : actions.data_in.length / print_frequerency;
+
+		const get_proxy = () => {
+			const res = proxy_locked_states.find( x => x.locked === false );
+			if (res) {
+                res.locked = true;
+                return res;
+            } else {
+				return false;
+			}
+		}
+
+		const unlock_proxy = (id) => {
+			const res = proxy_locked_states.find( x => x.id === id );
+            if (res) {
+                res.locked = false;
+            } else {
+				return false;
+			}
+		}
 
 		for (actions.current = 0; actions.current < actions.max; actions.current++ ) {
 
@@ -35,23 +61,65 @@ module.exports = async ({ max, data, procedure_path, procedure_data, print_frequ
 
 			console.log('create', actions.current, 'worker');
 
-			worker.postMessage(actions.data_in.pop());
+			worker.postMessage({ data_in: actions.data_in.pop(), proxy: get_proxy() });
 
 			worker.on('message', (data_out) => {
-				actions.data_out.push(data_out);
-				if (actions.data_in.length > 0) {
-					worker.postMessage(actions.data_in.pop());
-					if (print_frequerency && actions.data_in.length % print_frequerency == 0) {
-						console.log( ( (data_length-actions.data_in.length)/data_length_1000/10).toFixed(1), '%')
+
+				if (data_out.status === 'error') {
+
+					if (!data_out.proxy) {
+						worker.postMessage({ data_in: data_out.data_in, proxy: false });
+						return;
 					}
+
+					console.log(`proxy: ${data_out.proxy.host}:${data_out.proxy.port}`);
+
+					if (data_out.error.indexOf('ETIMEDOUT') > -1) {
+						console.log(`connection is time out`);
+					} else if (data_out.error.indexOf('ECONNREFUSED') > -1) {
+                        console.log(`connection refused`);
+					} else {
+						console.error('other error:', data_out.error);
+					}
+
+					if (data_out?.data_in) {
+						const new_proxy = get_proxy();
+						console.log(`retry with new proxy: ${new_proxy.host}:${new_proxy.port}`);
+						worker.postMessage({ data_in: data_out.data_in, proxy: new_proxy });
+					} else {
+						console.log('data_out', data_out)
+						console.error('no data_in in response');
+					}
+
+					return;
+
+				}
+
+				if (data_out.proxy) {
+					unlock_proxy(data_out.proxy.id);
+				}
+
+
+				actions.data_out.push(data_out);
+
+				if (actions.data_in.length > 0) {
+					
+					worker.postMessage({ data_in: actions.data_in.pop(), proxy: get_proxy() });
+					console.log( ( ((data_length - actions.data_in.length)/(data_length*1000))/10 ).toFixed(1), '%')
+					
 				} else {
 					worker.terminate();
 				}
 				
 			});
+
+			worker.on('error', (error) => {
+                console.log(`Worker encountered an error`);
+				console.log(error);
+            });
 		}
 
-		while (actions.data_in.length > 0) {
+		while (data_length !== actions.data_out.length) {
 			await new Promise(resolve => setTimeout(resolve, 1000));
 		}
 
