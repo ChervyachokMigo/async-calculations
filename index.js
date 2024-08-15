@@ -3,7 +3,7 @@ const { existsSync }  = require( 'node:fs');
 const path = require('node:path');
 const { isMainThread }  = require( 'node:worker_threads');
 
-module.exports = async ({ max, data, procedure_path, procedure_data, print_frequerency = 1000, proxy_list = [] }) => {
+module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list = [] }) => {
 	console.time('done');
 
 	if (isMainThread) {
@@ -105,7 +105,7 @@ module.exports = async ({ max, data, procedure_path, procedure_data, print_frequ
 				if (actions.data_in.length > 0) {
 					
 					worker.postMessage({ data_in: actions.data_in.pop(), proxy: get_proxy() });
-					console.log( ( ((data_length - actions.data_in.length)/(data_length*1000))/10 ).toFixed(1), '%')
+					//console.log( ( ((data_length - actions.data_in.length)/(data_length*1000))/10 ).toFixed(1), '%')
 					
 				} else {
 					worker.terminate();
