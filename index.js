@@ -4,7 +4,7 @@ const path = require('node:path');
 const { isMainThread }  = require( 'node:worker_threads');
 
 module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list = [] }) => {
-	console.time('done');
+	//console.time('done');
 
 	if (isMainThread) {
 		if (!existsSync(procedure_path)){
@@ -28,6 +28,25 @@ module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list 
 
 		const proxy_locked_states = proxy_list.map( (x, i) => ({...x, id: i, locked: false }));
 
+		const get_proxy = () => {
+			const res = proxy_locked_states.find( x => x.locked === false );
+			if (res) {
+				res.locked = true;
+				return res;
+			} else {
+				return false;
+			}
+		}
+
+		const unlock_proxy = (id) => {
+			const res = proxy_locked_states.find( x => x.id === id );
+			if (res) {
+				res.locked = false;
+			} else {
+				return false;
+			}
+		}
+
 		console.log( 'checking proxy:', 
 			proxy_locked_states.length >= actions.max ? 
 				'success' : 
@@ -36,30 +55,37 @@ module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list 
 
 		const data_length = actions.data_in.length;
 
-		const get_proxy = () => {
-			const res = proxy_locked_states.find( x => x.locked === false );
-			if (res) {
-                res.locked = true;
-                return res;
-            } else {
-				return false;
-			}
-		}
-
-		const unlock_proxy = (id) => {
-			const res = proxy_locked_states.find( x => x.id === id );
-            if (res) {
-                res.locked = false;
-            } else {
-				return false;
-			}
-		}
-
 		for (actions.current = 0; actions.current < actions.max; actions.current++ ) {
 
-			const worker = new Worker( path.join( __dirname, 'child.js'), { workerData: { procedure_path, procedure_data } });
+			const worker = new Worker( path.join( __dirname, 'child.js'), { 
+				workerData: { procedure_path, procedure_data },
+				stdout: true,
+				stderr: true
+			});
 
 			console.log('create', actions.current, 'worker');
+			worker.stdout.on('error', (err) => {
+				console.error('worker stdout error:', err);
+			});
+
+			worker.stdout.on('data', (data) => {
+				console.log('worker stdout data:', data.toString());
+			});
+
+            worker.stderr.on('data', (data) => {
+				console.error('worker stderr data:', data.toString());
+            });
+			worker.stderr.on('error', (err) => {
+				console.error('worker stderr error:', err);
+			});
+
+			worker.on('exit', (code, signal) => {
+                console.log('worker exited with code', code, 'and signal', signal);
+            });
+
+			worker.on('messageerror', (err) => {
+                console.error('worker messageerror:', err);
+            });
 
 			worker.postMessage({ data_in: actions.data_in.pop(), proxy: get_proxy() });
 
@@ -71,6 +97,8 @@ module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list 
 						worker.postMessage({ data_in: data_out.data_in, proxy: false });
 						return;
 					}
+
+					//IF PROXY IS SETTED
 
 					console.log(`proxy: ${data_out.proxy.host}:${data_out.proxy.port}`);
 
@@ -99,7 +127,6 @@ module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list 
 					unlock_proxy(data_out.proxy.id);
 				}
 
-
 				actions.data_out.push(data_out);
 
 				if (actions.data_in.length > 0) {
@@ -123,9 +150,9 @@ module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list 
 			await new Promise(resolve => setTimeout(resolve, 1000));
 		}
 
-		console.log ('data_out', actions.data_out.length);
+		console.log ('data out size', actions.data_out.length);
 		
-		console.timeEnd('done');
+		//console.timeEnd('done');
 
 		return actions.data_out;
 
