@@ -3,14 +3,17 @@ const { existsSync }  = require( 'node:fs');
 const path = require('node:path');
 const { isMainThread }  = require( 'node:worker_threads');
 
-module.exports = async ({ max = 4, data, procedure_path, procedure_data, proxy_list = [], IS_DEBUG = false }) => {
-	//console.time('done');
+module.exports = async ({ max = 4, data, procedure_path, procedure_data, proxy_list = [], IS_DEBUG = false, IS_STDOUT = true }) => {
 
 	if (isMainThread) {
 		if (!existsSync(procedure_path)){
 			throw new Error('procedure_path not found');
 		}
 		
+		if (IS_DEBUG) {
+			console.time('done');
+		}
+
 		const { Worker } = require('node:worker_threads');
 
 		//default vars
@@ -24,8 +27,10 @@ module.exports = async ({ max = 4, data, procedure_path, procedure_data, proxy_l
 		actions.max = max;
 		actions.data_in = data;
 
-		console.log('set', max, 'threads');
-		console.log ('data_in', actions.data_in.length);
+		if (IS_DEBUG) {
+			console.log('set', max, 'threads');
+			console.log ('data_in', actions.data_in.length);
+		}
 
 		const proxy_locked_states = proxy_list.map( (x, i) => ({...x, id: i, locked: false }));
 
@@ -74,14 +79,16 @@ module.exports = async ({ max = 4, data, procedure_path, procedure_data, proxy_l
 				console.error('worker stdout error:', err);
 			});
 
-			worker.stdout.on('data', (data) => {
-				console.log('worker stdout data:', data.toString());
-			});
+			if (IS_STDOUT) {
+				worker.stdout.on('data', (data) => {
+					console.log('worker stdout data:', data.toString());
+				});
+			}
 
             worker.stderr.on('data', (data) => {
 				console.error('worker stderr data:', data.toString());
             });
-			
+
 			worker.stderr.on('error', (err) => {
 				console.error('worker stderr error:', err);
 			});
@@ -139,9 +146,7 @@ module.exports = async ({ max = 4, data, procedure_path, procedure_data, proxy_l
 				actions.data_out.push(data_out);
 
 				if (actions.data_in.length > 0) {
-					
 					worker.postMessage({ data_in: actions.data_in.pop(), proxy: get_proxy() });
-					//console.log( ( ((data_length - actions.data_in.length)/(data_length*1000))/10 ).toFixed(1), '%')
 					
 				} else {
 					worker.terminate();
@@ -159,9 +164,10 @@ module.exports = async ({ max = 4, data, procedure_path, procedure_data, proxy_l
 			await new Promise(resolve => setTimeout(resolve, 1000));
 		}
 
-		console.log ('data out size', actions.data_out.length);
-		
-		//console.timeEnd('done');
+		if (IS_DEBUG) {
+			console.log ('data out size', actions.data_out.length);
+			console.timeEnd('done');
+		}
 
 		return actions.data_out;
 
