@@ -3,7 +3,7 @@ const { existsSync }  = require( 'node:fs');
 const path = require('node:path');
 const { isMainThread }  = require( 'node:worker_threads');
 
-module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list = [] }) => {
+module.exports = async ({ max = 4, data, procedure_path, procedure_data, proxy_list = [], IS_DEBUG = false }) => {
 	//console.time('done');
 
 	if (isMainThread) {
@@ -13,6 +13,7 @@ module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list 
 		
 		const { Worker } = require('node:worker_threads');
 
+		//default vars
 		const actions = {
 			current: 0,
 			max: 4,
@@ -47,11 +48,13 @@ module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list 
 			}
 		}
 
-		console.log( 'checking proxy:', 
-			proxy_locked_states.length >= actions.max ? 
-				'success' : 
-				'less than actions'
-		);
+		if (proxy_locked_states.length > 0) {
+			console.log( 'checking proxy:', 
+				proxy_locked_states.length >= actions.max ? 
+					'success' : 
+					'less than actions'
+			);
+		}
 
 		const data_length = actions.data_in.length;
 
@@ -63,7 +66,10 @@ module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list 
 				stderr: true
 			});
 
-			console.log('create', actions.current, 'worker');
+			if (IS_DEBUG) {
+				console.log('create', actions.current, 'worker');
+			}
+
 			worker.stdout.on('error', (err) => {
 				console.error('worker stdout error:', err);
 			});
@@ -75,13 +81,16 @@ module.exports = async ({ max, data, procedure_path, procedure_data, proxy_list 
             worker.stderr.on('data', (data) => {
 				console.error('worker stderr data:', data.toString());
             });
+			
 			worker.stderr.on('error', (err) => {
 				console.error('worker stderr error:', err);
 			});
 
-			worker.on('exit', (code, signal) => {
-                console.log('worker exited with code', code, 'and signal', signal);
-            });
+			if (IS_DEBUG) {
+				worker.on('exit', (code, signal) => {
+					console.log('worker exited with code', code, 'and signal', signal);
+				});
+			}
 
 			worker.on('messageerror', (err) => {
                 console.error('worker messageerror:', err);
